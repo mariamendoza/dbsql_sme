@@ -10,7 +10,7 @@
 # COMMAND ----------
 
 # DBTITLE 1,Define Output Location for Results
-target_catalog = "main"
+target_catalog = "maria_mendoza"
 target_schema = "access_entitlements_advisor"
 spark.sql(f"USE CATALOG {target_catalog}")
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {target_schema}")
@@ -195,86 +195,83 @@ spark.sql(f"OPTIMIZE {target_catalog}.{target_schema}.all_privileges_snapshot")
 # COMMAND ----------
 
 # DBTITLE 1,Example Query
-# MAGIC %sql
-# MAGIC -- What tables and a user read and from what permission?
-# MAGIC
-# MAGIC SELECT *
-# MAGIC FROM system.information_schema.all_privileges_snapshot t
-# MAGIC INNER JOIN main.access_entitlements_advisor.user_group_crosswalk p ON t.grantee = p.user_name OR t.grantee = p.group_name
-# MAGIC WHERE p.user_name = 'first.last@databricks.com'
+# What tables and a user read and from what permission?
+spark.sql(f"""
+SELECT *
+FROM system.information_schema.all_privileges_snapshot t
+INNER JOIN {target_catalog}.{target_schema}.user_group_crosswalk p ON t.grantee = p.user_name OR t.grantee = p.group_name
+WHERE p.user_name = 'first.last@databricks.com'""").display()
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT * 
-# MAGIC FROM main.access_entitlements_advisor.all_privileges_snapshot
+spark.sql(f"""SELECT * 
+FROM {target_catalog}.{target_schema}.all_privileges_snapshot""").display()
 
 # COMMAND ----------
 
 # DBTITLE 1,Data Asset Tag Table
-# MAGIC %sql
-# MAGIC CREATE OR REPLACE TABLE main.access_entitlements_advisor.uc_tags
-# MAGIC CLUSTER BY (entity_name, tag_name)
-# MAGIC AS
-# MAGIC SELECT
-# MAGIC   catalog_name,
-# MAGIC   null as schema_name,
-# MAGIC   null as table_name,
-# MAGIC   null as column_name,
-# MAGIC   catalog_name AS entity_name,
-# MAGIC   'catalog' AS entity_type,
-# MAGIC   tag_name,
-# MAGIC   tag_value,
-# MAGIC   now() AS snapshot_timestsamp
-# MAGIC FROM
-# MAGIC   system.information_schema.catalog_tags
-# MAGIC where
-# MAGIC   catalog_name NOT IN ('__databricks_internal', 'system')
-# MAGIC UNION ALL
-# MAGIC SELECT
-# MAGIC   catalog_name,
-# MAGIC   schema_name,
-# MAGIC   null as table_name,
-# MAGIC   null as column_name,
-# MAGIC   CONCAT(catalog_name,'.', schema_name) AS entity_name,
-# MAGIC   'schema' AS entity_type,
-# MAGIC   tag_name,
-# MAGIC   tag_value,
-# MAGIC           now() AS snapshot_timestsamp
-# MAGIC FROM
-# MAGIC   system.information_schema.schema_tags
-# MAGIC where
-# MAGIC   catalog_name NOT IN ('__databricks_internal', 'system')
-# MAGIC UNION ALL
-# MAGIC SELECT
-# MAGIC   catalog_name,
-# MAGIC   schema_name,
-# MAGIC   table_name,
-# MAGIC   null as column_name,
-# MAGIC   CONCAT(catalog_name, '.', schema_name, '.', table_name) AS entity_name,
-# MAGIC   'table' AS entity_type,
-# MAGIC   tag_name,
-# MAGIC   tag_value,
-# MAGIC           now() AS snapshot_timestsamp
-# MAGIC FROM
-# MAGIC   system.information_schema.table_tags
-# MAGIC where
-# MAGIC   catalog_name NOT IN ('__databricks_internal', 'system')
-# MAGIC UNION ALL
-# MAGIC SELECT
-# MAGIC   catalog_name,
-# MAGIC   schema_name,
-# MAGIC   table_name,
-# MAGIC   column_name,
-# MAGIC   CONCAT(catalog_name, '.', schema_name, '.', table_name, '.', column_name) AS entity_name,
-# MAGIC   'column' AS entity_type,
-# MAGIC   tag_name,
-# MAGIC   tag_value,
-# MAGIC           now() AS snapshot_timestsamp
-# MAGIC FROM
-# MAGIC   system.information_schema.column_tags
-# MAGIC where
-# MAGIC   catalog_name NOT IN ('__databricks_internal', 'system');
+spark.sql(f"""CREATE OR REPLACE TABLE {target_catalog}.{target_schema}.uc_tags
+CLUSTER BY (entity_name, tag_name)
+AS
+SELECT
+  catalog_name,
+  null as schema_name,
+  null as table_name,
+  null as column_name,
+  catalog_name AS entity_name,
+  'catalog' AS entity_type,
+  tag_name,
+  tag_value,
+  now() AS snapshot_timestsamp
+FROM
+  system.information_schema.catalog_tags
+where
+  catalog_name NOT IN ('__databricks_internal', 'system')
+UNION ALL
+SELECT
+  catalog_name,
+  schema_name,
+  null as table_name,
+  null as column_name,
+  CONCAT(catalog_name,'.', schema_name) AS entity_name,
+  'schema' AS entity_type,
+  tag_name,
+  tag_value,
+          now() AS snapshot_timestsamp
+FROM
+  system.information_schema.schema_tags
+where
+  catalog_name NOT IN ('__databricks_internal', 'system')
+UNION ALL
+SELECT
+  catalog_name,
+  schema_name,
+  table_name,
+  null as column_name,
+  CONCAT(catalog_name, '.', schema_name, '.', table_name) AS entity_name,
+  'table' AS entity_type,
+  tag_name,
+  tag_value,
+          now() AS snapshot_timestsamp
+FROM
+  system.information_schema.table_tags
+where
+  catalog_name NOT IN ('__databricks_internal', 'system')
+UNION ALL
+SELECT
+  catalog_name,
+  schema_name,
+  table_name,
+  column_name,
+  CONCAT(catalog_name, '.', schema_name, '.', table_name, '.', column_name) AS entity_name,
+  'column' AS entity_type,
+  tag_name,
+  tag_value,
+          now() AS snapshot_timestsamp
+FROM
+  system.information_schema.column_tags
+where
+  catalog_name NOT IN ('__databricks_internal', 'system')""")
 
 # COMMAND ----------
 
@@ -284,141 +281,139 @@ spark.sql(f"OPTIMIZE {target_catalog}.{target_schema}.all_privileges_snapshot")
 # COMMAND ----------
 
 # DBTITLE 1,Access Audit History Data Table
-# MAGIC %sql
-# MAGIC
-# MAGIC CREATE OR REPLACE TABLE main.access_entitlements_advisor.table_column_access_history
-# MAGIC CLUSTER BY (access_event_type, entity_name)
-# MAGIC AS 
-# MAGIC --- COLUMN Entity READ Events
-# MAGIC SELECT
-# MAGIC cl.source_table_catalog AS catalog_name,
-# MAGIC cl.source_table_schema AS schema_name,
-# MAGIC cl.source_table_name AS table_name,
-# MAGIC cl.source_column_name AS column_name,
-# MAGIC CONCAT(cl.source_table_catalog, '.', cl.source_table_schema, '.', cl.source_table_name, '.', cl.source_column_name) AS entity_name,
-# MAGIC  cl.created_by AS accessed_by,
-# MAGIC  cl.entity_type AS access_entity_type,
-# MAGIC  cl.source_type AS access_data_asset_type,
-# MAGIC  'column' AS access_data_entity_type,
-# MAGIC  'READ' AS access_event_type,
-# MAGIC  COUNT(distinct cl.event_time) as access_count,
-# MAGIC  MIN(cl.event_date) as first_access_date,
-# MAGIC  MAX(cl.event_date) as last_access_date,
-# MAGIC  collect_set(t.tag_name) AS tags_list,
-# MAGIC          now() AS snapshot_timestsamp
-# MAGIC FROM
-# MAGIC  system.access.column_lineage cl
-# MAGIC LEFT JOIN main.access_entitlements_advisor.uc_tags AS t
-# MAGIC  ON cl.source_table_catalog = t.catalog_name
-# MAGIC  AND cl.source_table_schema = t.schema_name
-# MAGIC  AND cl.source_table_name = t.table_name
-# MAGIC  AND cl.source_column_name = t.column_name
-# MAGIC  AND t.entity_type = 'column'
-# MAGIC WHERE
-# MAGIC  cl.source_type IS NOT NULL
-# MAGIC AND CONCAT(source_table_catalog, '.', source_table_schema, '.', source_table_name, '.', source_column_name) IS NOT NULL
-# MAGIC GROUP BY
-# MAGIC  ALL
-# MAGIC
-# MAGIC UNION ALL
-# MAGIC
-# MAGIC --- COLUMN Entity WRITE Events
-# MAGIC SELECT
-# MAGIC target_table_catalog AS catalog_name,
-# MAGIC target_table_schema AS schema_name,
-# MAGIC target_table_name AS table_name,
-# MAGIC target_column_name AS column_name,
-# MAGIC CONCAT(target_table_catalog, '.', target_table_schema, '.', target_table_name, '.', target_column_name) AS entity_name,
-# MAGIC  cl.created_by AS accessed_by,
-# MAGIC  cl.entity_type AS access_entity_type,
-# MAGIC  cl.source_type AS access_data_asset_type,
-# MAGIC  'column' AS access_data_entity_type,
-# MAGIC  'WRITE' AS access_event_type,
-# MAGIC  COUNT(distinct cl.event_time) as access_count,
-# MAGIC  MIN(cl.event_date) as first_access_date,
-# MAGIC  MAX(cl.event_date) as last_access_date,
-# MAGIC collect_set(t.tag_name) AS tags_list,
-# MAGIC         now() AS snapshot_timestsamp
-# MAGIC FROM
-# MAGIC  system.access.column_lineage  cl
-# MAGIC LEFT JOIN main.access_entitlements_advisor.uc_tags AS t
-# MAGIC  ON cl.target_table_catalog = t.catalog_name
-# MAGIC  AND cl.target_table_schema = t.schema_name
-# MAGIC  AND cl.target_table_name = t.table_name
-# MAGIC  AND cl.target_column_name = t.column_name
-# MAGIC  AND t.entity_type = 'column'
-# MAGIC WHERE
-# MAGIC  cl.target_type IS NOT NULL
-# MAGIC  AND (
-# MAGIC  CONCAT(target_table_catalog, '.', target_table_schema, '.', target_table_name, '.', target_column_name) IS NOT NULL
-# MAGIC  )
-# MAGIC GROUP BY
-# MAGIC  ALL
-# MAGIC
-# MAGIC UNION ALL
-# MAGIC
-# MAGIC
-# MAGIC --- TABLE Entity READ Events
-# MAGIC SELECT
-# MAGIC source_table_catalog AS catalog_name,
-# MAGIC source_table_schema AS schema_name,
-# MAGIC source_table_name AS table_name,
-# MAGIC null AS column_name,
-# MAGIC CONCAT(source_table_catalog, '.', source_table_schema, '.', source_table_name) AS entity_name,
-# MAGIC  cl.created_by AS accessed_by,
-# MAGIC  cl.entity_type AS access_entity_type,
-# MAGIC  cl.source_type AS access_data_asset_type,
-# MAGIC  'table' AS access_data_entity_type,
-# MAGIC  'READ' AS access_event_type,
-# MAGIC  COUNT(distinct cl.event_time) as access_count,
-# MAGIC  MIN(cl.event_date) as first_access_date,
-# MAGIC  MAX(cl.event_date) as last_access_date,
-# MAGIC  collect_set(t.tag_name) AS tags_list,
-# MAGIC          now() AS snapshot_timestsamp
-# MAGIC FROM
-# MAGIC  system.access.table_lineage cl
-# MAGIC LEFT JOIN main.access_entitlements_advisor.uc_tags AS t
-# MAGIC  ON cl.source_table_catalog = t.catalog_name
-# MAGIC  AND cl.source_table_schema = t.schema_name
-# MAGIC  AND cl.source_table_name = t.table_name
-# MAGIC  AND t.entity_type = 'table'
-# MAGIC WHERE
-# MAGIC  cl.source_type IS NOT NULL
-# MAGIC AND CONCAT(source_table_catalog, '.', source_table_schema, '.', source_table_name) IS NOT NULL
-# MAGIC GROUP BY
-# MAGIC  ALL
-# MAGIC
-# MAGIC UNION ALL
-# MAGIC
-# MAGIC --- TABLE Entity WRITE Events
-# MAGIC SELECT
-# MAGIC target_table_catalog AS catalog_name,
-# MAGIC target_table_schema AS schema_name,
-# MAGIC target_table_name AS table_name,
-# MAGIC null AS column_name,
-# MAGIC CONCAT(target_table_catalog, '.', target_table_schema, '.', target_table_name) AS entity_name,
-# MAGIC  cl.created_by AS accessed_by,
-# MAGIC  cl.entity_type AS access_entity_type,
-# MAGIC  cl.source_type AS access_data_asset_type,
-# MAGIC  'table' AS access_data_entity_type,
-# MAGIC  'WRITE' AS access_event_type,
-# MAGIC  COUNT(distinct cl.event_time) as access_count,
-# MAGIC  MIN(cl.event_date) as first_access_date,
-# MAGIC  MAX(cl.event_date) as last_access_date,
-# MAGIC collect_set(t.tag_name) AS tags_list,
-# MAGIC         now() AS snapshot_timestsamp
-# MAGIC FROM
-# MAGIC  system.access.table_lineage cl
-# MAGIC LEFT JOIN main.access_entitlements_advisor.uc_tags AS t
-# MAGIC  ON cl.target_table_catalog = t.catalog_name
-# MAGIC  AND cl.target_table_schema = t.schema_name
-# MAGIC  AND cl.target_table_name = t.table_name
-# MAGIC  AND t.entity_type = 'table'
-# MAGIC WHERE
-# MAGIC  target_type IS NOT NULL
-# MAGIC  AND (
-# MAGIC  CONCAT(target_table_catalog, '.', target_table_schema, '.', target_table_name) IS NOT NULL
-# MAGIC  )
-# MAGIC GROUP BY
-# MAGIC  ALL
-# MAGIC ;
+spark.sql(f"""CREATE OR REPLACE TABLE {target_catalog}.{target_schema}r.table_column_access_history
+CLUSTER BY (access_event_type, entity_name)
+AS 
+--- COLUMN Entity READ Events
+SELECT
+cl.source_table_catalog AS catalog_name,
+cl.source_table_schema AS schema_name,
+cl.source_table_name AS table_name,
+cl.source_column_name AS column_name,
+CONCAT(cl.source_table_catalog, '.', cl.source_table_schema, '.', cl.source_table_name, '.', cl.source_column_name) AS entity_name,
+ cl.created_by AS accessed_by,
+ cl.entity_type AS access_entity_type,
+ cl.source_type AS access_data_asset_type,
+ 'column' AS access_data_entity_type,
+ 'READ' AS access_event_type,
+ COUNT(distinct cl.event_time) as access_count,
+ MIN(cl.event_date) as first_access_date,
+ MAX(cl.event_date) as last_access_date,
+ collect_set(t.tag_name) AS tags_list,
+         now() AS snapshot_timestsamp
+FROM
+ system.access.column_lineage cl
+LEFT JOIN {target_catalog}.{target_schema}.uc_tags AS t
+ ON cl.source_table_catalog = t.catalog_name
+ AND cl.source_table_schema = t.schema_name
+ AND cl.source_table_name = t.table_name
+ AND cl.source_column_name = t.column_name
+ AND t.entity_type = 'column'
+WHERE
+ cl.source_type IS NOT NULL
+AND CONCAT(source_table_catalog, '.', source_table_schema, '.', source_table_name, '.', source_column_name) IS NOT NULL
+GROUP BY
+ ALL
+
+UNION ALL
+
+--- COLUMN Entity WRITE Events
+SELECT
+target_table_catalog AS catalog_name,
+target_table_schema AS schema_name,
+target_table_name AS table_name,
+target_column_name AS column_name,
+CONCAT(target_table_catalog, '.', target_table_schema, '.', target_table_name, '.', target_column_name) AS entity_name,
+ cl.created_by AS accessed_by,
+ cl.entity_type AS access_entity_type,
+ cl.source_type AS access_data_asset_type,
+ 'column' AS access_data_entity_type,
+ 'WRITE' AS access_event_type,
+ COUNT(distinct cl.event_time) as access_count,
+ MIN(cl.event_date) as first_access_date,
+ MAX(cl.event_date) as last_access_date,
+collect_set(t.tag_name) AS tags_list,
+        now() AS snapshot_timestsamp
+FROM
+ system.access.column_lineage  cl
+LEFT JOIN {target_catalog}.{target_schema}.uc_tags AS t
+ ON cl.target_table_catalog = t.catalog_name
+ AND cl.target_table_schema = t.schema_name
+ AND cl.target_table_name = t.table_name
+ AND cl.target_column_name = t.column_name
+ AND t.entity_type = 'column'
+WHERE
+ cl.target_type IS NOT NULL
+ AND (
+ CONCAT(target_table_catalog, '.', target_table_schema, '.', target_table_name, '.', target_column_name) IS NOT NULL
+ )
+GROUP BY
+ ALL
+
+UNION ALL
+
+
+--- TABLE Entity READ Events
+SELECT
+source_table_catalog AS catalog_name,
+source_table_schema AS schema_name,
+source_table_name AS table_name,
+null AS column_name,
+CONCAT(source_table_catalog, '.', source_table_schema, '.', source_table_name) AS entity_name,
+ cl.created_by AS accessed_by,
+ cl.entity_type AS access_entity_type,
+ cl.source_type AS access_data_asset_type,
+ 'table' AS access_data_entity_type,
+ 'READ' AS access_event_type,
+ COUNT(distinct cl.event_time) as access_count,
+ MIN(cl.event_date) as first_access_date,
+ MAX(cl.event_date) as last_access_date,
+ collect_set(t.tag_name) AS tags_list,
+         now() AS snapshot_timestsamp
+FROM
+ system.access.table_lineage cl
+LEFT JOIN {target_catalog}.{target_schema}.uc_tags AS t
+ ON cl.source_table_catalog = t.catalog_name
+ AND cl.source_table_schema = t.schema_name
+ AND cl.source_table_name = t.table_name
+ AND t.entity_type = 'table'
+WHERE
+ cl.source_type IS NOT NULL
+AND CONCAT(source_table_catalog, '.', source_table_schema, '.', source_table_name) IS NOT NULL
+GROUP BY
+ ALL
+
+UNION ALL
+
+--- TABLE Entity WRITE Events
+SELECT
+target_table_catalog AS catalog_name,
+target_table_schema AS schema_name,
+target_table_name AS table_name,
+null AS column_name,
+CONCAT(target_table_catalog, '.', target_table_schema, '.', target_table_name) AS entity_name,
+ cl.created_by AS accessed_by,
+ cl.entity_type AS access_entity_type,
+ cl.source_type AS access_data_asset_type,
+ 'table' AS access_data_entity_type,
+ 'WRITE' AS access_event_type,
+ COUNT(distinct cl.event_time) as access_count,
+ MIN(cl.event_date) as first_access_date,
+ MAX(cl.event_date) as last_access_date,
+collect_set(t.tag_name) AS tags_list,
+        now() AS snapshot_timestsamp
+FROM
+ system.access.table_lineage cl
+LEFT JOIN {target_catalog}.{target_schema}.uc_tags AS t
+ ON cl.target_table_catalog = t.catalog_name
+ AND cl.target_table_schema = t.schema_name
+ AND cl.target_table_name = t.table_name
+ AND t.entity_type = 'table'
+WHERE
+ target_type IS NOT NULL
+ AND (
+ CONCAT(target_table_catalog, '.', target_table_schema, '.', target_table_name) IS NOT NULL
+ )
+GROUP BY
+ ALL
+""")
