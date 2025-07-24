@@ -9,8 +9,16 @@
 
 # COMMAND ----------
 
+# MAGIC %pip install --upgrade databricks-sdk
+
+# COMMAND ----------
+
+dbutils.library.restartPython()
+
+# COMMAND ----------
+
 # DBTITLE 1,Define Output Location for Results
-target_catalog = "maria_mendoza"
+target_catalog = "change_me"
 target_schema = "access_entitlements_advisor"
 spark.sql(f"USE CATALOG {target_catalog}")
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {target_schema}")
